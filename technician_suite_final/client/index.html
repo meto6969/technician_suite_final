@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>واجهة الفني - تطبيق الفنيين</title>
+
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #f6f7fb;
+      margin: 0;
+      direction: rtl;
+    }
+    header {
+      background: #2563eb;
+      color: white;
+      padding: 14px 20px;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .container {
+      max-width: 800px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 15px rgba(0,0,0,.1);
+      padding: 20px;
+    }
+    label { display:block; margin:6px 0 3px; font-weight:bold; }
+    input, textarea, select {
+      width:100%; padding:10px; border:1px solid #ccc;
+      border-radius:8px; font-size:14px;
+    }
+    .btn {
+      background:#2563eb; color:#fff;
+      border:none; padding:10px 16px;
+      border-radius:10px; cursor:pointer;
+      font-size:14px;
+    }
+    .btn:hover { background:#1e40af; }
+    .btn.ghost {
+      background:#e2e8f0; color:#111827;
+    }
+    .hidden { display:none; }
+    .ticket {
+      border:1px solid #ddd;
+      padding:10px; border-radius:10px;
+      margin-bottom:10px;
+      background:#f9fafb;
+    }
+    .badge {
+      background:#e2e8f0;
+      color:#111827;
+      border-radius:10px;
+      padding:2px 8px;
+      font-size:12px;
+    }
+    .toast {
+      position:fixed;
+      bottom:16px; right:16px;
+      background:#111827;
+      color:white;
+      padding:12px 16px;
+      border-radius:10px;
+      opacity:0; transform:translateY(20px);
+      transition:.3s;
+    }
+    .toast.show { opacity:1; transform:translateY(0); }
+  </style>
+</head>
+
+<body>
+  <header>💡 تطبيق الفنيين - واجهة الفني</header>
+
+  <div class="container" id="loginBox">
+    <h3>تسجيل الدخول</h3>
+    <label>اسم المستخدم</label>
+    <input id="user" placeholder="admin1 أو admin2">
+
+    <label>كلمة المرور</label>
+    <input id="pass" type="password" placeholder="1234">
+
+    <button class="btn mt" onclick="login()">دخول</button>
+    <p id="msg" style="color:red"></p>
+  </div>
+
+  <div class="container hidden" id="mainBox">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3>تذاكري الحالية</h3>
+      <button class="btn ghost" onclick="logout()">تسجيل خروج</button>
+    </div>
+    <div id="tickets"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const q = id => document.getElementById(id);
+    const toast = msg => {
+      const t = q('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(()=>t.classList.remove('show'),2500);
+    }
+
+    let token = localStorage.getItem('tech_token');
+    const socket = io();
+
+    function setScreen(){
+      if(token){ q('loginBox').classList.add('hidden'); q('mainBox').classList.remove('hidden'); loadTickets(); }
+      else{ q('loginBox').classList.remove('hidden'); q('mainBox').classList.add('hidden'); }
+    }
+
+    async function login(){
+      const username = q('user').value.trim();
+      const password = q('pass').value.trim();
+      const res = await fetch('/api/auth/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username,password})
+      });
+      const data = await res.json();
+      if(res.ok){
+        token = data.token;
+        localStorage.setItem('tech_token',token);
+        setScreen();
+      } else q('msg').textContent = '❌ فشل تسجيل الدخول';
+    }
+
+    function logout(){
+      localStorage.removeItem('tech_token');
+      token=null;
+      setScreen();
+    }
+
+    async function loadTickets(){
+      const res = await fetch('/api/work-orders',{headers:{Authorization:'Bearer '+token}});
+      const arr = await res.json();
+      const el = q('tickets');
+      el.innerHTML='';
+      arr.forEach(t=>{
+        el.innerHTML += `
+          <div class="ticket">
+            <b>${t.customer_name}</b> <span class="badge">${t.status}</span><br>
+            📍 ${t.address || '-'}<br>
+            📞 ${t.phone || '-'}<br>
+            <small>مشكلة: ${t.issue}</small>
+          </div>`;
+      });
+    }
+
+    socket.on('new-ticket', t=>{
+      toast('تذكرة جديدة: '+t.customer_name);
+      loadTickets();
+    });
+
+    setScreen();
+  </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>لوحة الإدارة - تطبيق الفنيين</title>
+
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:"Segoe UI",Tahoma,Arial;direction:rtl;background:#f6f7fb;margin:0}
+    header{background:#0f172a;color:#fff;padding:14px 20px;text-align:center;font-weight:700}
+    .container{max-width:960px;margin:20px auto;background:#fff;border-radius:14px;box-shadow:0 10px 18px rgba(0,0,0,.08);padding:18px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    label{display:block;margin:6px 0 4px;color:#334155;font-size:13px}
+    input,select,textarea{width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;font-size:14px}
+    textarea{resize:vertical}
+    .btn{background:#2563eb;color:#fff;border:none;padding:10px 16px;border-radius:10px;cursor:pointer}
+    .btn:hover{background:#1e40af}
+    .btn.ghost{background:#e2e8f0;color:#0f172a}
+    .hidden{display:none}
+    .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .list .item{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:10px;background:#f9fafb}
+    .badge{display:inline-block;background:#e2e8f0;color:#111827;border-radius:999px;padding:2px 8px;font-size:11px}
+    .muted{color:#64748b;font-size:12px}
+    .mt{margin-top:10px}
+    .toast{position:fixed;right:16px;bottom:16px;background:#111827;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 10px 18px rgba(0,0,0,.2);opacity:0;transform:translateY(12px);transition:.25s}
+    .toast.show{opacity:1;transform:translateY(0)}
+    hr{border:none;border-top:1px solid #eee;margin:16px 0}
+  </style>
+</head>
+
+<body>
+  <header>لوحة الإدارة — تطبيق الفنيين</header>
+
+  <!-- بطاقة تسجيل الدخول -->
+  <section class="container" id="loginCard">
+    <h3>تسجيل دخول الأدمن</h3>
+    <div class="grid">
+      <div>
+        <label>اسم المستخدم</label>
+        <input id="au" value="admin1" autocomplete="username"/>
+      </div>
+      <div>
+        <label>كلمة المرور</label>
+        <input id="ap" type="password" value="1234" autocomplete="current-password"/>
+      </div>
+    </div>
+    <div class="mt">
+      <button class="btn" onclick="adminLogin()">دخول</button>
+      <span id="lm" class="muted"></span>
+    </div>
+  </section>
+
+  <!-- بطاقة إنشاء التذكرة -->
+  <section class="container hidden" id="formCard">
+    <div class="row">
+      <h3>إنشاء تذكرة جديدة</h3>
+      <button class="btn ghost" onclick="logout()">خروج</button>
+    </div>
+
+    <div class="grid">
+      <div>
+        <label>اسم الزبون *</label>
+        <input id="customer_name" placeholder="مثال: أحمد علي"/>
+      </div>
+      <div>
+        <label>هاتف الزبون</label>
+        <input id="phone" placeholder="07xxxxxxxxx"/>
+      </div>
+      <div>
+        <label>العنوان</label>
+        <input id="address" placeholder="بغداد - المنصور"/>
+      </div>
+      <div class="full">
+        <label>وصف المشكلة *</label>
+        <textarea id="issue" rows="3" placeholder="مثال: انقطاع الانترنت/تركيب راوتر..."></textarea>
+      </div>
+      <div>
+        <label>اختر الفني *</label>
+        <select id="technician"></select>
+      </div>
+      <div>
+        <label>موعد التنفيذ (اختياري)</label>
+        <input id="scheduled_for" type="datetime-local"/>
+      </div>
+    </div>
+
+    <div class="mt">
+      <button class="btn" onclick="createTicket()">إرسال التذكرة</button>
+      <span id="res" class="muted"></span>
+    </div>
+
+    <hr/>
+
+    <div class="row">
+      <h3>آخر التذاكر</h3>
+      <button class="btn ghost" onclick="loadRecent()">تحديث</button>
+    </div>
+    <div id="recent" class="list"></div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // أدوات UI
+    const q = id => document.getElementById(id);
+    const show = id => q(id).classList.remove('hidden');
+    const hide = id => q(id).classList.add('hidden');
+    function toast(msg){
+      const t = q('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(()=>t.classList.remove('show'), 2500);
+    }
+
+    // حالة الأدمن
+    let token = localStorage.getItem('admin_token') || null;
+    const socket = io();
+
+    // تبديل الشاشات
+    function setScreen(){
+      if(token){ hide('loginCard'); show('formCard'); init(); }
+      else{ show('loginCard'); hide('formCard'); }
+    }
+
+    // تسجيل الدخول
+    async function adminLogin(){
+      q('lm').textContent = '...';
+      const username = q('au').value.trim();
+      const password = q('ap').value.trim();
+      const resp = await fetch('/api/auth/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      const data = await resp.json();
+      if(resp.ok){
+        token = data.token;
+        localStorage.setItem('admin_token', token);
+        setScreen();
+      }else{
+        q('lm').textContent = data.error || 'خطأ في تسجيل الدخول';
+      }
+    }
+
+    function logout(){
+      token = null;
+      localStorage.removeItem('admin_token');
+      setScreen();
+    }
+
+    // تهيئة الصفحة بعد الدخول
+    async function init(){
+      socket.emit('register', { token }); // ليس ضرورياً للأدمن لكن لا يضر
+      await loadTechs();
+      await loadRecent();
+    }
+
+    // تحميل قائمة الفنيين
+    async function loadTechs(){
+      const r = await fetch('/api/technicians', { headers:{ Authorization: 'Bearer ' + token }});
+      const rows = await r.json();
+      const sel = q('technician');
+      sel.innerHTML = '<option value="">— اختر الفني —</option>';
+      rows.filter(x => x.role !== 'admin').forEach(x => {
+        const op = document.createElement('option');
+        op.value = x.id;
+        op.textContent = x.name + ' — ' + x.username;
+        sel.appendChild(op);
+      });
+    }
+
+    // إنشاء تذكرة
+    async function createTicket(){
+      const body = {
+        customer_name: q('customer_name').value.trim(),
+        phone: q('phone').value.trim(),
+        address: q('address').value.trim(),
+        issue: q('issue').value.trim(),
+        technician_id: q('technician').value || null,
+        scheduled_for: q('scheduled_for').value || null
+      };
+
+      if(!body.customer_name || !body.issue || !body.technician_id){
+        q('res').textContent = 'أكمل الحقول المطلوبة';
+        return;
+      }
+
+      q('res').textContent = 'جارٍ الإرسال...';
+      const resp = await fetch('/api/work-orders', {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          Authorization:'Bearer ' + token
+        },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json();
+
+      if(resp.ok){
+        q('res').textContent = 'تم — رقم التذكرة: ' + data.id;
+        clearForm();
+        loadRecent();
+        toast('تم إرسال التذكرة إلى الفني');
+      }else{
+        q('res').textContent = 'خطأ: ' + (data.error || '');
+      }
+    }
+
+    function clearForm(){
+      ['customer_name','phone','address','issue','scheduled_for'].forEach(id => q(id).value = '');
+      q('technician').value = '';
+    }
+
+    // تحميل آخر التذاكر
+    async function loadRecent(){
+      const r = await fetch('/api/work-orders', { headers:{ Authorization:'Bearer ' + token }});
+      const rows = await r.json();
+      const el = q('recent');
+      el.innerHTML = '';
+      rows.slice(0, 8).forEach(x => {
+        const it = document.createElement('div');
+        it.className = 'item';
+        it.innerHTML = `
+          <div><b>${x.customer_name}</b> <span class="badge">${x.status}</span></div>
+          <div class="muted">📞 ${x.phone || '-'} — 📍 ${x.address || ''}</div>
+          <div class="muted">📝 ${x.issue}</div>
+          <div class="muted">👨‍🔧 فني #${x.technician_id} — ⏱ ${x.created_at || ''}</div>
+        `;
+        el.appendChild(it);
+      });
+    }
+
+    // بدء الصفحة
+    setScreen();
+  </script>
+</body>
+</html>
